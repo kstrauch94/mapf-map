@@ -27,6 +27,10 @@ class Map:
         self.add_edges(edges)
         self.agents = {}
         self.agent_dist = {}
+        
+        # agent shortest paths in time order
+        # only populated when calling the shortest path function of this class
+        self.agent_sps = {}
 
         self.corridors_agent = defaultdict(lambda: defaultdict(set))
 
@@ -70,7 +74,8 @@ class Map:
             path.append(node)
             node = parents[node]
 
-        return path[::-1]
+        self.agent_sps[agent] = path[::-1]
+        return self.agent_sp[agent]
 
     def from_control(self, ctl):
 
