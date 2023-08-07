@@ -116,7 +116,10 @@ class Map:
             parents, dist = self.bfs(start_goal["g"])
             self.agent_dist[agent]["g"] = dist
 
-        if len(list(ctl.symbolic_atoms.by_signature("spath", 4))) == 0:
+    def set_initial_corridor(self, ctl=None):
+        # if no control is given or there are no spath atoms that set the corridor
+        # get SP of each robot and set it as corridor 0
+        if ctl is None or len(list(ctl.symbolic_atoms.by_signature("spath", 4))) == 0:
             for agent in self.agents.keys():
                 path = self.get_shortest_path(agent)
                 for node in path:
