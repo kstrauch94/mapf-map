@@ -75,7 +75,7 @@ class Map:
             node = parents[node]
 
         self.agent_sps[agent] = path[::-1]
-        return self.agent_sp[agent]
+        return self.agent_sps[agent]
 
     def from_control(self, ctl):
 
