@@ -182,15 +182,28 @@ class Map:
                         neighbor.set_k(k)
             
     def atoms_in_corridor_upto_k(self, maxk):
-        atoms = []
+        atoms = set()
         nodes = self.nodes_in_corridor_upto_k(maxk)
         #print(f"nodes: {len(nodes)} in k {maxk}")
         for node in nodes:
             for neighbor in self.edges[node]:
                 if neighbor in nodes:
-                    atoms.append(f"edge({node},{neighbor}).")
+                    atoms.add(f"edge({node},{neighbor}).")
 
-            atoms.append(f"vertex({str(node)}).")
+            atoms.add(f"vertex({str(node)}).")
+
+        return atoms
+    
+    def atoms_in_corridor_upto_k_agent(self, maxk, agent):
+        atoms = set()
+        nodes = self.nodes_in_corridor_upto_k_agent(maxk, agent)
+        #print(f"nodes: {len(nodes)} in k {maxk}")
+        for node in nodes:
+            for neighbor in self.edges[node]:
+                if neighbor in nodes:
+                    atoms.add(f"edge({node},{neighbor}).")
+
+            atoms.add(f"vertex({str(node)}).")
 
         return atoms
 
@@ -198,6 +211,14 @@ class Map:
         nodes = []
         for k in range(0,maxk+1):
             for node in self.corridors[k]:
+                nodes.append(node)
+
+        return nodes
+    
+    def nodes_in_corridor_upto_k_agent(self, maxk, agent):
+        nodes = []
+        for k in range(0,maxk+1):
+            for node in self.corridors_agent[agent][k]:
                 nodes.append(node)
 
         return nodes
@@ -218,6 +239,18 @@ class Map:
             atoms.append(f"agent({agent}).")
 
             atoms.append(f"agent_SP({agent},{self.shortest_path_dist(agent)}).")
+        return atoms
+
+    def create_instance_agents(self, k, agents):
+        atoms = set()
+        for agent in agents:
+            s_g = self.agents[agent]
+            atoms.update(self.atoms_in_corridor_upto_k_agent(k, agent))
+            atoms.add(f"start({agent},{s_g['s']}).")
+            atoms.add(f"goal({agent},{s_g['g']}).")
+            atoms.add(f"agent({agent}).")
+
+            atoms.add(f"agent_SP({agent},{self.shortest_path_dist(agent)}).")
         return atoms
 
     def is_corridor_reachable(self, k, horizon):
