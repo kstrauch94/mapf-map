@@ -77,6 +77,18 @@ class Map:
         self.agent_sps[agent] = path[::-1]
         return self.agent_sps[agent]
 
+    def path_to_atoms(self, path, agent):
+        atoms = []
+        prev = None
+        for i, node in enumerate(path):
+            atoms.append(f"at({agent},{str(node)},{i}).")
+            if i != 0:
+                atoms.append(f"move({agent},{str(prev)},{str(node)},{i})")
+            
+            prev = node
+
+        return atoms
+
     def from_control(self, ctl):
 
         for atom in ctl.symbolic_atoms.by_signature("edge", 2):
