@@ -88,13 +88,13 @@ class Map:
         # if path is valid set it as the agent path
         self.agent_sps[agent] = path
 
-    def path_to_atoms(self, path, agent):
+    def path_to_atoms(self, path, agent, at_name="at", move_name="move"):
         atoms = []
         prev = None
         for i, node in enumerate(path):
-            atoms.append(f"at({agent},{str(node)},{i}).")
+            atoms.append(f"{at_name}({agent},{str(node)},{i}).")
             if i != 0:
-                atoms.append(f"move({agent},{str(prev)},{str(node)},{i})")
+                atoms.append(f"{move_name}({agent},{str(prev)},{str(node)},{i})")
             
             prev = node
 
