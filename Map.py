@@ -23,6 +23,7 @@ class Map:
 
     def __init__(self, edges=None) -> None:
         self.edges = defaultdict(set)
+        self.nodes = set()
         self.symbol_to_node = {}
         self.add_edges(edges)
         self.agents = {}
@@ -77,6 +78,16 @@ class Map:
         self.agent_sps[agent] = path[::-1]
         return self.agent_sps[agent]
 
+    def set_agent_path(self, agent, path):
+        for i, node in enumerate(path):
+            if i != 0:
+                if node not in self.edges[prev]:
+                    raise ValueError(f"Path is not valid, {prev} and {node} are not connected")
+            prev = node
+        
+        # if path is valid set it as the agent path
+        self.agent_sps[agent] = path
+
     def path_to_atoms(self, path, agent):
         atoms = []
         prev = None
@@ -88,6 +99,13 @@ class Map:
             prev = node
 
         return atoms
+
+    def reset_agent_corridors(self, agent):
+        self.agent_sps[agent] = None
+        self.corridors_agent[agent] = defaultdict(set)
+
+        for node in self.nodes:
+            node.set_k_agent(None, agent)
 
     def from_control(self, ctl):
 
@@ -108,6 +126,8 @@ class Map:
                 bnode = self.symbol_to_node[b]
 
             self.add_edge(anode,bnode)
+            self.nodes.add(anode)
+            self.nodes.add(bnode)
 
 
         for atom in ctl.symbolic_atoms.by_signature("goal", 2):
@@ -173,7 +193,12 @@ class Map:
 
     def k_corridors_agents(self, k_corr):
         for k in range(1, k_corr+1):
-            for agent, corridor in self.corridors_agent.items():
+            for agent in self.agents.keys():
+                self.k_corridor_agent(k, agent)
+
+    def k_corridor_agent(self, k_corr, agent):
+        corridor = self.corridors_agent[agent]
+        for k in range(1, k_corr+1):
                 if k in corridor:
                     continue
                 for node in corridor[k-1]:
@@ -181,7 +206,7 @@ class Map:
                         if neighbor.k_agent[agent] is None:
                             corridor[k].add(neighbor)
                             neighbor.set_k_agent(k, agent)
-                
+
     def k_corridors(self, k_corr):
         for k in range(1, k_corr+1):
             if k in self.corridors:
@@ -377,7 +402,17 @@ class Map:
 
         self.k_corridors_agents(k-1)
         return k - 1
-        
+    
+    def max_corridor_agent(self, agent, horizon):
+        reachable = True
+        k = 0
+        while reachable:
+            k += 1
+            self.k_corridor_agent(k, agent)
+            reachable = self.is_corridor_reachable(k, horizon)
+
+        return k - 1
+
     def corridor_atoms(self, k):
         atoms = ""
         for pos in self.corridors[k]:
