@@ -78,6 +78,9 @@ class Map:
         self.agent_sps[agent] = path[::-1]
         return self.agent_sps[agent]
 
+    def agent_path_length(self, agent):
+        return len(self.agent_sps[agent]) - 1
+
     def set_agent_path(self, agent, path):
         for i, node in enumerate(path):
             if i != 0:
@@ -443,7 +446,6 @@ class Map:
                 atoms += f"corridor({agent},{node},{k}).\n"
 
         return atoms
-
 
     def teg(self, horizon, k):
         atoms = set()
