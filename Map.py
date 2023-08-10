@@ -94,7 +94,7 @@ class Map:
         for i, node in enumerate(path):
             atoms.append(f"{at_name}({agent},{str(node)},{i}).")
             if i != 0:
-                atoms.append(f"{move_name}({agent},{str(prev)},{str(node)},{i})")
+                atoms.append(f"{move_name}({agent},{str(prev)},{str(node)},{i}). ")
             
             prev = node
 
