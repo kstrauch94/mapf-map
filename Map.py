@@ -84,7 +84,7 @@ class Map:
     def set_agent_path(self, agent, path):
         for i, node in enumerate(path):
             if i != 0:
-                if node not in self.edges[prev]:
+                if node != prev and node not in self.edges[prev]:
                     raise ValueError(f"Path is not valid, {prev} and {node} are not connected")
             prev = node
         
