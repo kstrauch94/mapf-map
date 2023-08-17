@@ -86,6 +86,9 @@ class Map:
             if i != 0:
                 if node != prev and node not in self.edges[prev]:
                     raise ValueError(f"Path is not valid, {prev} and {node} are not connected")
+                
+            self.corridors_agent[agent][0].add(node)
+            node.set_k_agent(0, agent)
             prev = node
         
         # if path is valid set it as the agent path
@@ -248,6 +251,7 @@ class Map:
         return atoms
 
     def nodes_in_corridor_upto_k(self, maxk):
+        self.k_corridors(maxk)
         nodes = []
         for k in range(0,maxk+1):
             for node in self.corridors[k]:
@@ -256,14 +260,7 @@ class Map:
         return nodes
     
     def nodes_in_corridor_upto_k_agent(self, maxk, agent):
-        nodes = []
-        for k in range(0,maxk+1):
-            for node in self.corridors_agent[agent][k]:
-                nodes.append(node)
-
-        return nodes
-    
-    def nodes_in_corridor_upto_k_agent(self, maxk, agent):
+        self.k_corridors_agents(maxk)
         nodes = []
         for k in range(0,maxk+1):
             for node in self.corridors_agent[agent][k]:
@@ -311,6 +308,19 @@ class Map:
         
         return False
 
+    def check_other_agents_at_goal(self, agent, time, node, delta):
+        ## check if the node is the goal of an agent
+        # if so, check that the time point is before the agent's horizon
+        for ag in self.agents.keys():
+            if ag == agent:
+                continue
+            # if the current time is already over the horizon of the agent
+            # then skip this node
+            if self.agents[ag]["g"] == node and self.shortest_path_dist(ag)+delta <= time:
+                return True
+            
+        return False
+
     def reachable_nodes_at_times(self, max_k, agent, delta, agent_specific=False):
         horizon = self.shortest_path_dist(agent)+delta
 
@@ -331,24 +341,15 @@ class Map:
                 for neighbor in self.edges[node]:
                     if neighbor not in nodes:
                         continue
-                    skip = False
-                    for ag in self.agents.keys():
-                        if ag == agent:
-                            continue
-                        if self.agents[ag]["g"] == neighbor and self.shortest_path_dist(ag)+delta <= time:
-                            skip = True
-                            break
+                    skip = self.check_other_agents_at_goal(agent, time, neighbor, delta)
 
+                    # if the agent can reach the goal in time from that node
+                    # add it to the reachable nodes
                     if not skip and self.node_goal_distance(neighbor, agent) <= horizon - time:
                         reachable[agent, time].add(neighbor)
-                # if can wait
-                skip = False
-                for ag in self.agents.keys():
-                    if ag == agent:
-                        continue
-                    if self.agents[ag]["g"] == node and self.shortest_path_dist(ag)+delta <= time:
-                        skip = True
-                        break
+
+                # check if agent can stay in the node
+                skip = self.check_other_agents_at_goal(agent, time, node, delta)
                 if not skip and self.node_goal_distance(node, agent) <= horizon - time:
                         reachable[agent, time].add(node)
                         
