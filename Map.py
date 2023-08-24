@@ -178,7 +178,7 @@ class Map:
             for node in value:
                 atoms.append(f"{reachability_name}({agent},{node},{time}).")
         
-        return atoms
+        return atoms, nodes
 
     def reachable_nodes_at_times_makespan(self, agent, horizon, reachability_name="poss_loc"):
 
