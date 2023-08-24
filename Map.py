@@ -147,6 +147,8 @@ class Map:
 
         reachable = {}
 
+        nodes = set()
+
         reachable[agent, 0] = [self.agents[agent]["s"]]
 
         for time in range(1, horizon+1):
@@ -162,11 +164,13 @@ class Map:
                     # add it to the reachable nodes
                     if not skip and self.node_goal_distance(neighbor, agent) <= horizon - time:
                         reachable[agent, time].add(neighbor)
+                        nodes.add(neighbor)
 
                 # check if agent can stay in the node
                 skip = self.check_other_agents_at_goal(agent, time, node, delta)
                 if not skip and self.node_goal_distance(node, agent) <= horizon - time:
                         reachable[agent, time].add(node)
+                        nodes.add(node)
                         
         atoms = []
         for key, value in reachable.items():
@@ -180,6 +184,8 @@ class Map:
 
         reachable = {}
 
+        nodes = set()
+
         reachable[agent, 0] = [self.agents[agent]["s"]]
 
         for time in range(1, horizon+1):
@@ -191,10 +197,12 @@ class Map:
 
                     if self.node_goal_distance(neighbor, agent) <= horizon - time:
                         reachable[agent, time].add(neighbor)
+                        nodes.add(neighbor)
 
                 # if can wait
                 if self.node_goal_distance(node, agent) <= horizon - time:
                         reachable[agent, time].add(node)
+                        nodes.add(node)
                         
         atoms = []
         for key, value in reachable.items():
@@ -202,6 +210,19 @@ class Map:
             for node in value:
                 atoms.append(f"{reachability_name}({agent},{node},{time}).")
         
+        return atoms, nodes
+    
+    def nodes_to_graph_atoms(self, nodes, edge_name="edge", vertex_name="vertex"):
+        atoms = set()
+        for node in nodes:
+            # add edges to nodes in the corridor
+            for neighbor in self.get_edges(node):
+                if neighbor in nodes:
+                    atoms.add(f"{edge_name}({node},{neighbor}).")
+
+            # add ndoes
+            atoms.add(f"{vertex_name}({str(node)}).")
+
         return atoms
     
     def create_instance(self, agents, start_name="start", goal_name="goal", agent_name="agent", agent_sp_name="agent_SP"):
