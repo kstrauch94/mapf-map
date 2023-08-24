@@ -1,17 +1,10 @@
 from collections import defaultdict, deque
 from clingo import Function, Number
+
 class Node:
 
     def __init__(self, name) -> None:
         self.name = name
-        self.k_agent = defaultdict(lambda: None)
-        self.k = None
-
-    def set_k_agent(self, k, agent):
-        self.k_agent[agent] = k
-
-    def set_k(self, k):
-        self.k = k
 
     def __str__(self) -> str:
         return str(self.name)
@@ -19,24 +12,24 @@ class Node:
     def __repr__(self) -> str:
         return self.__str__()
 
+
 class Map:
 
     def __init__(self, edges=None) -> None:
         self.edges = defaultdict(set)
         self.nodes = set()
+
         self.symbol_to_node = {}
+        #self.node_to_symbol = {}
+
         self.add_edges(edges)
+
         self.agents = {}
         self.agent_dist = {}
-        
-        # agent shortest paths in time order
-        # only populated when calling the shortest path function of this class
-        self.agent_sps = {}
 
-        self.corridors_agent = defaultdict(lambda: defaultdict(set))
-
-        self.corridors = defaultdict(set)
-
+    @property
+    def agents(self):
+        return self.agents.keys()
 
     def add_edges(self, edges):
         if edges is not None:
@@ -44,10 +37,14 @@ class Map:
                 self.add_edge(*edge)
 
     def add_edge(self, a, b):
+        self.nodes.add(a)
+        self.nodes.add(b)
+
         self.edges[a].add(b)
-        self.edges[b].add(a)
 
-
+    def get_edges(self, node):
+        return self.edges[node]
+    
     def bfs(self, start):
         parent = {start: None}
         dist = {start: 0}
@@ -78,41 +75,6 @@ class Map:
         self.agent_sps[agent] = path[::-1]
         return self.agent_sps[agent]
 
-    def agent_path_length(self, agent):
-        return len(self.agent_sps[agent]) - 1
-
-    def set_agent_path(self, agent, path):
-        for i, node in enumerate(path):
-            if i != 0:
-                if node != prev and node not in self.edges[prev]:
-                    raise ValueError(f"Path is not valid, {prev} and {node} are not connected")
-                
-            self.corridors_agent[agent][0].add(node)
-            node.set_k_agent(0, agent)
-            prev = node
-        
-        # if path is valid set it as the agent path
-        self.agent_sps[agent] = path
-
-    def path_to_atoms(self, path, agent, at_name="at", move_name="move"):
-        atoms = []
-        prev = None
-        for i, node in enumerate(path):
-            atoms.append(f"{at_name}({agent},{str(node)},{i}).")
-            if i != 0:
-                atoms.append(f"{move_name}({agent},{str(prev)},{str(node)},{i}). ")
-            
-            prev = node
-
-        return atoms
-
-    def reset_agent_corridors(self, agent):
-        self.agent_sps[agent] = None
-        self.corridors_agent[agent] = defaultdict(set)
-
-        for node in self.nodes:
-            node.set_k_agent(None, agent)
-
     def from_control(self, ctl):
 
         for atom in ctl.symbolic_atoms.by_signature("edge", 2):
@@ -132,9 +94,6 @@ class Map:
                 bnode = self.symbol_to_node[b]
 
             self.add_edge(anode,bnode)
-            self.nodes.add(anode)
-            self.nodes.add(bnode)
-
 
         for atom in ctl.symbolic_atoms.by_signature("goal", 2):
             agent = atom.symbol.arguments[0].number
@@ -154,34 +113,6 @@ class Map:
             parents, dist = self.bfs(start_goal["g"])
             self.agent_dist[agent]["g"] = dist
 
-    def set_initial_corridor(self, ctl=None):
-        # if no control is given or there are no spath atoms that set the corridor
-        # get SP of each robot and set it as corridor 0
-        if ctl is None or len(list(ctl.symbolic_atoms.by_signature("spath", 4))) == 0:
-            for agent in self.agents.keys():
-                path = self.get_shortest_path(agent)
-                for node in path:
-                    self.corridors_agent[agent][0].add(node)
-                    self.corridors[0].add(node)
-                    node.set_k_agent(0, agent)
-                    node.set_k(0)
-        else:
-            for atom in ctl.symbolic_atoms.by_signature("spath", 4):
-                agent = atom.symbol.arguments[0].number
-                vertex1 = self.symbol_to_node[atom.symbol.arguments[1]]
-                vertex2 = self.symbol_to_node[atom.symbol.arguments[2]]
-
-                # add spath to corridor 0
-                self.corridors_agent[agent][0].add(vertex1)
-                self.corridors[0].add(vertex1)
-                vertex1.set_k_agent(0, agent)
-                vertex1.set_k(0)
-
-                self.corridors_agent[agent][0].add(vertex2)
-                self.corridors[0].add(vertex2)
-                vertex2.set_k_agent(0, agent)
-                vertex2.set_k(0)
-
     def node_start_distance(self, node, agent):
         return self.agent_dist[agent]["s"][node]
     
@@ -196,118 +127,7 @@ class Map:
 
     def reachable_node(self, node, agent, horizon):
         return self.node_distance(node, agent) <= horizon
-
-    def k_corridors_agents(self, k_corr):
-        for k in range(1, k_corr+1):
-            for agent in self.agents.keys():
-                self.k_corridor_agent(k, agent)
-
-    def k_corridor_agent(self, k_corr, agent):
-        corridor = self.corridors_agent[agent]
-        for k in range(1, k_corr+1):
-                if k in corridor:
-                    continue
-                for node in corridor[k-1]:
-                    for neighbor in self.edges[node]:
-                        if neighbor.k_agent[agent] is None:
-                            corridor[k].add(neighbor)
-                            neighbor.set_k_agent(k, agent)
-
-    def k_corridors(self, k_corr):
-        for k in range(1, k_corr+1):
-            if k in self.corridors:
-                continue
-
-            for node in self.corridors[k-1]:
-                for neighbor in self.edges[node]:
-                    if neighbor.k is None:
-                        self.corridors[k].add(neighbor)
-                        neighbor.set_k(k)
-            
-    def atoms_in_corridor_upto_k(self, maxk):
-        atoms = set()
-        nodes = self.nodes_in_corridor_upto_k(maxk)
-        #print(f"nodes: {len(nodes)} in k {maxk}")
-        for node in nodes:
-            for neighbor in self.edges[node]:
-                if neighbor in nodes:
-                    atoms.add(f"edge({node},{neighbor}).")
-
-            atoms.add(f"vertex({str(node)}).")
-
-        return atoms
     
-    def atoms_in_corridor_upto_k_agent(self, maxk, agent):
-        atoms = set()
-        nodes = self.nodes_in_corridor_upto_k_agent(maxk, agent)
-        #print(f"nodes: {len(nodes)} in k {maxk}")
-        for node in nodes:
-            for neighbor in self.edges[node]:
-                if neighbor in nodes:
-                    atoms.add(f"edge({node},{neighbor}).")
-
-            atoms.add(f"vertex({str(node)}).")
-
-        return atoms
-
-    def nodes_in_corridor_upto_k(self, maxk):
-        self.k_corridors(maxk)
-        nodes = []
-        for k in range(0,maxk+1):
-            for node in self.corridors[k]:
-                nodes.append(node)
-
-        return nodes
-    
-    def nodes_in_corridor_upto_k_agent(self, maxk, agent):
-        self.k_corridors_agents(maxk)
-        nodes = []
-        for k in range(0,maxk+1):
-            for node in self.corridors_agent[agent][k]:
-                nodes.append(node)
-
-        return nodes
-
-    def create_instance(self, k):
-        atoms = self.atoms_in_corridor_upto_k(k)
-        for agent, s_g in self.agents.items():
-            atoms.append(f"start({agent},{s_g['s']}).")
-            atoms.append(f"goal({agent},{s_g['g']}).")
-            atoms.append(f"agent({agent}).")
-
-            atoms.append(f"agent_SP({agent},{self.shortest_path_dist(agent)}).")
-        return atoms
-
-    def create_instance_agents(self, k, agents):
-        atoms = set()
-        for agent in agents:
-            s_g = self.agents[agent]
-            atoms.update(self.atoms_in_corridor_upto_k_agent(k, agent))
-            atoms.add(f"start({agent},{s_g['s']}).")
-            atoms.add(f"goal({agent},{s_g['g']}).")
-            atoms.add(f"agent({agent}).")
-
-            atoms.add(f"agent_SP({agent},{self.shortest_path_dist(agent)}).")
-        return atoms
-
-    def is_corridor_reachable(self, k, horizon):
-        # make sure that corridors are generated up to k (if possible)
-        # before the check
-        self.k_corridors(k)
-        self.k_corridors_agents(k)
-
-        # if k is still not in the list then it is above the max
-        if k not in self.corridors:
-            return False
-        
-        # if any node in the corridor is reachable for any agent then the corridor is reachable
-        for agent in self.agents.keys():
-            for node in self.corridors[k]:
-                if self.reachable_node(node, agent, horizon):
-                    return True
-        
-        return False
-
     def check_other_agents_at_goal(self, agent, time, node, delta):
         ## check if the node is the goal of an agent
         # if so, check that the time point is before the agent's horizon
@@ -321,13 +141,9 @@ class Map:
             
         return False
 
-    def reachable_nodes_at_times(self, max_k, agent, delta, agent_specific=False):
+    # TODO: add possible list of nodes where reachability is limited (e.g. corridor of agents)
+    def reachable_nodes_at_times(self, agent, delta, reachability_name="poss_loc"):
         horizon = self.shortest_path_dist(agent)+delta
-
-        if agent_specific:
-            nodes = self.nodes_in_corridor_upto_k_agent(max_k, agent)
-        else:
-            nodes = self.nodes_in_corridor_upto_k(max_k)
 
         reachable = {}
 
@@ -339,8 +155,7 @@ class Map:
             for node in reachable[agent, time-1]:
                 # look at neighbors
                 for neighbor in self.edges[node]:
-                    if neighbor not in nodes:
-                        continue
+
                     skip = self.check_other_agents_at_goal(agent, time, neighbor, delta)
 
                     # if the agent can reach the goal in time from that node
@@ -357,16 +172,11 @@ class Map:
         for key, value in reachable.items():
             agent, time = key
             for node in value:
-                atoms.append(f"poss_loc({agent},{node},{time}).")
+                atoms.append(f"{reachability_name}({agent},{node},{time}).")
         
         return atoms
 
-    def reachable_nodes_at_times_makespan(self, max_k, agent, horizon, agent_specific=False):
-
-        if agent_specific:
-            nodes = self.nodes_in_corridor_upto_k_agent(max_k, agent)
-        else:
-            nodes = self.nodes_in_corridor_upto_k(max_k)
+    def reachable_nodes_at_times_makespan(self, agent, horizon, reachability_name="poss_loc"):
 
         reachable = {}
 
@@ -378,8 +188,6 @@ class Map:
             for node in reachable[agent, time-1]:
                 # look at neighbors
                 for neighbor in self.edges[node]:
-                    if neighbor not in nodes:
-                        continue
 
                     if self.node_goal_distance(neighbor, agent) <= horizon - time:
                         reachable[agent, time].add(neighbor)
@@ -392,10 +200,89 @@ class Map:
         for key, value in reachable.items():
             agent, time = key
             for node in value:
-                atoms.append(f"poss_loc({agent},{node},{time}).")
+                atoms.append(f"{reachability_name}({agent},{node},{time}).")
         
         return atoms
+    
+    def create_instance(self, agents, start_name="start", goal_name="goal", agent_name="agent", agent_sp_name="agent_SP"):
+        atoms = set()
+        for agent in agents:
+            s_g = self.agents[agent]
+            atoms.add(f"{start_name}({agent},{s_g['s']}).")
+            atoms.add(f"{goal_name}({agent},{s_g['g']}).")
+            atoms.add(f"{agent_name}({agent}).")
 
+            atoms.add(f"{agent_sp_name}({agent},{self.shortest_path_dist(agent)}).")
+        return atoms
+
+    def shortest_path_sum(self):
+            return sum([self.shortest_path_dist(agent) for agent in self.agents])
+
+    def min_horizon(self):
+        return max([self.shortest_path_dist(agent) for agent in self.agents])
+    
+
+class Corridor:
+
+    def __init__(self, map, path=None):
+        self.map = map
+
+        self.corridor = defaultdict(set)
+
+        if path is not None:
+            self.path = path
+        else:
+            self.path = self.map.get_shortest_path()
+
+        for node in self.path:
+            self.corridor[0].add(node)
+        
+    def reset(self, path):
+        # there should not be a reason to reset without a new path
+        self.corridor = defaultdict(set)
+        
+        self.path = path
+        for node in self.path:
+            self.corridor[0].add(node)
+
+    def nodes_in_corridor(self, k):
+        nodes = set()
+        for i in range(0, max(k, self.corridor.keys()) +1):
+            if i in self.corridor:
+                nodes = nodes.union(self.corridor[i])
+
+        return nodes
+
+    def k_corridors(self, k_corr):
+        for k in range(1, k_corr+1):
+            if k in self.corridor:
+                continue
+
+            cummulative_corridor = self.nodes_in_corridor(k-1)
+
+            for node in self.corridor[k-1]:
+                for neighbor in self.map.get_edges(node):
+                    if neighbor not in cummulative_corridor:
+                        self.corridor[k].add(neighbor)
+                            
+
+    def atoms_in_corridor(self, maxk, edge_name="edge", vertex_name="vertex"):
+        atoms = set()
+        self.k_corridors(maxk)
+        nodes = self.nodes_in_corridor(maxk)
+
+        for node in nodes:
+            # add edges to nodes in the corridor
+            for neighbor in self.map.get_edges(node):
+                if neighbor in nodes:
+                    atoms.add(f"{edge_name}({node},{neighbor}).")
+
+            # add ndoes
+            atoms.add(f"{vertex_name}({str(node)}).")
+
+        return atoms
+    
+    
     def max_corridor(self, horizon):
         reachable = True
         k = 0
@@ -407,82 +294,30 @@ class Map:
         self.k_corridors_agents(k-1)
         return k - 1
     
-    def max_corridor_agent(self, agent, horizon):
-        reachable = True
-        k = 0
-        while reachable:
-            k += 1
-            self.k_corridor_agent(k, agent)
-            reachable = self.is_corridor_reachable(k, horizon)
-
-        return k - 1
-
-    def corridor_atoms(self, k):
-        atoms = ""
-        for pos in self.corridors[k]:
-            atoms += f"kpos({k},{pos}).\n"
-
-        return atoms
-
-    def corridor_atoms_alt(self, k):
-        atoms = ""
-        for node in self.corridors[k]:
-            for agent in self.agents.keys():
-                atoms += f"corridor({agent},{node},{k}).\n"
-
-        return atoms
-
-    def corridor_atoms_agents(self, k):
-        atoms = ""
-        for agent, corridors in self.corridors_agent.items():
-            for pos in corridors[k]:
-                atoms += f"kpos({k},{pos},{agent}).\n"
+    def path_to_atoms(self, agent, at_name="at", move_name="move"):
+        atoms = []
+        prev = None
+        for i, node in enumerate(self.path):
+            atoms.append(f"{at_name}({agent},{str(node)},{i}).")
+            if i != 0:
+                atoms.append(f"{move_name}({agent},{str(prev)},{str(node)},{i}). ")
+            
+            prev = node
 
         return atoms
     
-    def corridor_atoms_agents_alt(self, k):
-        atoms = ""
-        for agent, corridors in self.corridors_agent.items():
-            for node in corridors[k]:
-                atoms += f"corridor({agent},{node},{k}).\n"
 
-        return atoms
+class CorridorManager:
 
-    def teg(self, horizon, k):
-        atoms = set()
-        for node in self.corridors[k]:
-            #print(node.name.arguments)
-            for agent in self.agents.keys():
-                # nodes can't reach the goal if they get there too late
-                if self.node_distance(node, agent) > horizon:
-                    for time in range(0, horizon+1):
-                        atoms.add((Function("at",[Number(agent),Function("",node.name.arguments),Number(time)]), False))
-                        continue
-                    
-                diff = horizon - self.node_distance(node, agent)
-                start_dist = self.node_start_distance(node, agent)
-                for time in range(start_dist+diff+1, horizon+1):
-                        atoms.add((Function("at",[Number(agent),Function("",node.name.arguments),Number(time)]), False))
+    def __init__(self, map, paths=None):
+        self.map = map
 
-        return atoms
-    
-    def all_teg(self, horizon, max_k):
-        atoms = set()
-        for k in range(0,max_k+1):
-            atoms.update(self.teg(horizon, k))
-        print(len(atoms))
-        return atoms
+        self.corridors = {}
 
-    def shortest_path_sum(self):
-        sum = 0
-        for agent in self.agents.keys():
-            sum += self.shortest_path_dist(agent)
+        for agent in self.map.agents:
+            if paths is not None and agent in paths:
+                agent_path = paths[agent]
+            else:
+                agent_path = self.map.get_shortest_path(agent)
 
-        return sum
-
-    def print_sp_per_agent(self):
-        for agent in self.agents.keys():
-            print("SP", agent, self.shortest_path_dist(agent))
-        
-    def min_horizon(self):
-        return max([self.shortest_path_dist(agent) for agent in self.agents.keys()])
+            self.corridors[agent] = Corridor(self.map, agent_path)
